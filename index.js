@@ -51,6 +51,7 @@ function getStopsForRoute(self, lat, long, routeNumber, routeDirection)
         headers: {'User-Agent': 'request'}
     };
 
+    console.log("Getting stops for location: lat=" + lat + ", lon=" + long);
     https.get(options, function(res) {
         var body = '';
 
@@ -209,8 +210,8 @@ const handlers = {
         let speechOutput = this.t('RETURN_MESSAGE', routeNumber);
         let successSpeechOutput = this.t('SUCCESS_RETURN_MESSAGE');
 
-        var lat = '51.468557';
-        var long = '-0.151273';
+        //var lat = '51.468557';
+        //var long = '-0.151273';
 
         var consentToken = undefined;
         var deviceId = undefined;;
@@ -218,79 +219,88 @@ const handlers = {
 
         if(this.event.context == undefined)
         {
-            console.log("No DeviceId and ConsentToken provided in request. Using default location");
-            getStopsForRoute(self, lat, long, routeNumber, routeDirection);
+            console.log("No DeviceId and ConsentToken provided in request. Aborting");
+            this.emit(':tell', Messages.ERROR);
+            return;
+        }
+        
+        consentToken = this.event.context.System.user.permissions.consentToken;
+        deviceId = this.event.context.System.device.deviceId;
+        apiEndpoint = this.event.context.System.apiEndpoint;
+
+        // If we have not been provided with a consent token, this means that the user has not
+        // authorized your skill to access this information. In this case, you should prompt them
+        // that you don't have permissions to retrieve their address.
+        if(!consentToken) {
+            this.emit(":tellWithPermissionCard", Messages.NOTIFY_MISSING_PERMISSIONS, PERMISSIONS);
+
+            // Lets terminate early since we can't do anything else.
+            console.log("User did not give us permissions to access Device Location.");
+            return;
         }
         else
         {
-            consentToken = this.event.context.System.user.permissions.consentToken;
-            deviceId = this.event.context.System.device.deviceId;
-            apiEndpoint = this.event.context.System.apiEndpoint;
+            console.log("User has give permission to access Device Loacation. Requesting...");
+        }
 
-            // If we have not been provided with a consent token, this means that the user has not
-            // authorized your skill to access this information. In this case, you should prompt them
-            // that you don't have permissions to retrieve their address.
-            if(!consentToken) {
-                this.emit(":tellWithPermissionCard", Messages.NOTIFY_MISSING_PERMISSIONS, PERMISSIONS);
+        const alexaDeviceAddressClient = new AlexaDeviceAddressClient(apiEndpoint, deviceId, consentToken);
+        let deviceAddressRequest = alexaDeviceAddressClient.getFullAddress();
 
-                // Lets terminate early since we can't do anything else.
-                console.log("User did not give us permissions to access their address.");
-                return;
+        deviceAddressRequest.then((addressResponse) => {
+            switch(addressResponse.statusCode) {
+                case 200:
+                    console.log("Address successfully retrieved, now responding to user.");
+                    const address = addressResponse.address;
+
+                    var options = {
+                      provider: 'google',
+                      httpAdapter: 'https', // Default 
+                      apiKey: GEOCODE_APP_KEY, // for Mapquest, OpenCage, Google Premier 
+                      formatter: null         // 'gpx', 'string', ... 
+                    };
+                     
+                    var geocoder = NodeGeocoder(options);
+                    var searchAddress = address['addressLine1'] + ' ' + address['postalCode'];
+                    
+                    // Using callback 
+                    geocoder.geocode(searchAddress, function(err, res) {
+                        console.log(res);
+                        
+                        if(res != undefined && res[0] != undefined && res[0].latitude != undefined && res[0].longitude != undefined){
+                            console.log("Successfully found geocode information for device location");
+                            getStopsForRoute(self, res[0].latitude, res[0].longitude, routeNumber, routeDirection);
+                        }
+                        else
+                        {
+                            console.log("Error getting geocode information for address: " + err);
+                            this.emit(":tell", Messages.NO_GEOCODE_ADDRESS);
+                        }
+                    });
+                        
+                    break;
+                case 204:
+                    // This likely means that the user didn't have their address set via the companion app.
+                    console.log("Successfully requested from the device address API, but no address was returned.");
+                    this.emit(":tell", Messages.NO_ADDRESS);
+                    break;
+                case 403:
+                    console.log("The consent token we had wasn't authorized to access the user's address.");
+                    this.emit(":tellWithPermissionCard", Messages.NOTIFY_MISSING_PERMISSIONS, PERMISSIONS);
+                    break;
+                default:
+                    this.emit(":ask", Messages.LOCATION_FAILURE, Messages.LOCATION_FAILURE);
             }
 
-            const alexaDeviceAddressClient = new AlexaDeviceAddressClient(apiEndpoint, deviceId, consentToken);
-            let deviceAddressRequest = alexaDeviceAddressClient.getFullAddress();
+            console.info("Ending getAddressHandler()");
+        });
 
-            deviceAddressRequest.then((addressResponse) => {
-                switch(addressResponse.statusCode) {
-                    case 200:
-                        console.log("Address successfully retrieved, now responding to user.");
-                        const address = addressResponse.address;
+        deviceAddressRequest.catch((error) => {
+            this.emit(":tell", Messages.ERROR);
+            console.error(error);
+            console.info("Ending getAddressHandler()");
+        });
 
-                        var options = {
-                          provider: 'google',
-                         
-                          // Optional depending on the providers 
-                          httpAdapter: 'https', // Default 
-                          apiKey: GEOCODE_APP_KEY, // for Mapquest, OpenCage, Google Premier 
-                          formatter: null         // 'gpx', 'string', ... 
-                        };
-                         
-                        var geocoder = NodeGeocoder(options);
-                        var searchAddress = address['addressLine1'] + ' ' + address['postalCode'];
-                        
-                        // Using callback 
-                        geocoder.geocode(searchAddress, function(err, res) {
-                          console.log(res);
-                          lat = res.latitude;
-                          long = res.longitude;
-                        });
-
-                        getStopsForRoute(self, lat, long, routeNumber, routeDirection);
-                        break;
-                    case 204:
-                        // This likely means that the user didn't have their address set via the companion app.
-                        console.log("Successfully requested from the device address API, but no address was returned.");
-                        this.emit(":tell", Messages.NO_ADDRESS);
-                        break;
-                    case 403:
-                        console.log("The consent token we had wasn't authorized to access the user's address.");
-                        this.emit(":tellWithPermissionCard", Messages.NOTIFY_MISSING_PERMISSIONS, PERMISSIONS);
-                        break;
-                    default:
-                        this.emit(":ask", Messages.LOCATION_FAILURE, Messages.LOCATION_FAILURE);
-                }
-
-                console.info("Ending getAddressHandler()");
-            });
-
-            deviceAddressRequest.catch((error) => {
-                this.emit(":tell", Messages.ERROR);
-                console.error(error);
-                console.info("Ending getAddressHandler()");
-            });
-
-        }
+        
     },
     'AMAZON.HelpIntent': function () {
         this.attributes.speechOutput = this.t('HELP_MESSAGE');

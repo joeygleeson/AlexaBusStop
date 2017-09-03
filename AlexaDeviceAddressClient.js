@@ -14,7 +14,6 @@ class AlexaDeviceAddressClient {
      * @param consentToken valid consent token.
      */
     constructor(apiEndpoint, deviceId, consentToken) {
-        console.log("Creating AlexaAddressClient instance.");
         this.deviceId = deviceId;
         this.consentToken = consentToken;
         this.endpoint = apiEndpoint.replace(/^https?:\/\//i, "");
