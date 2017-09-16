@@ -143,7 +143,7 @@ function getStopsForRoute(self, lat, long, routeNumber, routeDirection)
                     var sortedPredictions = _.sortBy(predictionsForLine, function(line){return line.timeToStation;});
                     var nextArrival = sortedPredictions[0];
                     var mins = Math.floor(nextArrival.timeToStation/60);
-                    var due = mins === 0 ? 'Now' : mins == 1 `in ${mins} minute` : `in ${mins} minutes`; 
+                    var due = mins === 0 ? 'Now' : mins == 1 ? `in ${mins} minute` : `in ${mins} minutes`; 
                     var direction = routeDirection == undefined ? "" : routeDirection;
                     speechOutput = util.format(successSpeechOutput, direction, routeNumber, due, stopName);
                     console.log(speechOutput);
@@ -251,11 +251,11 @@ const handlers = {
                     var addressLine1 = address['addressLine1']
                     var postalCode = address['postalCode']
                     var searchAddress = addressLine1 + ' ' + postalCode;
-                    console.log(`Successfully retrieved Address from Alexa API: ${address}`);
+                    console.log("Successfully retrieved Address from Alexa API: " + searchAddress);
                     
                     if( (addressLine1 == undefined || addressLine1.trim() == '') && (postalCode == undefined || postalCode.trim() == ''))
                     {
-                        console.log(`Device Address does not have the required information. Search Address was ${searchAddress}...Aborting`);
+                        console.log(`Device Address does not have the required information. Search Address was [${searchAddress}]...Aborting`);
                         self.emit(":tell", Messages.EMPTY_ADDRESS);
                         return;
                     }
