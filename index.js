@@ -47,11 +47,11 @@ function getStopsForRoute(self, lat, long, routeNumber, routeDirection)
     
     var options = {
         host: 'api.tfl.gov.uk',
-        path: '/Stoppoint?lat=' + lat + '&lon=' + long + '&stoptypes=NaptanPublicBusCoachTram&radius=400',
+        path: '/Stoppoint?lat=' + lat + '&lon=' + long + '&stoptypes=NaptanPublicBusCoachTram&radius=800',
         headers: {'User-Agent': 'request'}
     };
 
-    console.log("Getting stops for location: lat=" + lat + ", lon=" + long);
+    console.log("Getting stops for location: lat=${lat},long=${long}");
     https.get(options, function(res) {
         var body = '';
 
@@ -60,12 +60,13 @@ function getStopsForRoute(self, lat, long, routeNumber, routeDirection)
         });
 
         res.on('end', function(){
-            console.log("Got stops body: " + body);
+            console.log("Successfully retrieved stops information from TFL");
+                    
             var data = JSON.parse(body);
 
             if(data.stopPoints.length == 0)
             {
-                speechOutput = "Could not find any stops nearby";
+                speechOutput = "Could not find any London Bus Stops nearby";
                 console.log(speechOutput);
                 self.emit(':tell', speechOutput); 
                 return;
@@ -88,7 +89,7 @@ function getStopsForRoute(self, lat, long, routeNumber, routeDirection)
                     {
                         var lineDirection = compassPointProperties[0].value;
                         isMatchingDirection = routeDirection[0].toLowerCase() == lineDirection[0].toLowerCase();
-                        console.log("Checking stop %s for matching direction: %s = %s %s", stopElement.stopLetter, routeDirection[0].toLowerCase(),  lineDirection[0].toLowerCase(), isMatchingDirection);
+                        //console.log("Checking stop %s for matching direction: %s = %s %s", stopElement.stopLetter, routeDirection[0].toLowerCase(),  lineDirection[0].toLowerCase(), isMatchingDirection);
                     }
                 }
 
@@ -102,18 +103,13 @@ function getStopsForRoute(self, lat, long, routeNumber, routeDirection)
                 self.emit(':tell', speechOutput); 
                 return;
             }
-
-            console.log("Found %s Stops for route: %s", stopsForRoute.length, routeNumber);
-            var closestStop = stopsForRoute[0];
-            console.log("Closest Stop: " + JSON.stringify(closestStop));
             
-            if(closestStop == undefined)
-            {
-                speechOutput = "Could not find any stops nearby";
-                console.log(speechOutput);
-                self.emit(':tell', speechOutput); 
-                return;
-            }
+            var closestStop = stopsForRoute[0];
+            var stopName = closestStop.commonName + ", Stop " + closestStop.stopLetter;
+                    
+            console.log("Found ${stopsForRoute.length} Stops for route: ${routeNumber}. Closest Stop: ${stopName}");
+            //console.log("Closest Stop: " + JSON.stringify(closestStop));
+            
             var options = {
                 host: 'api.tfl.gov.uk',
                 path: '/Stoppoint/' + closestStop.id + '/Arrivals?mode=bus',
@@ -127,9 +123,8 @@ function getStopsForRoute(self, lat, long, routeNumber, routeDirection)
                 });
 
                 res.on('end', function(){
-                    console.log("Got arrivals: " + body);
+                    console.log("Successfully retrieved arrivals information for stop: ${stopName}");
                     var data = JSON.parse(body);
-                    var stopName = closestStop.commonName + ", Stop " + closestStop.stopLetter;
                     
                     var predictionsForLine = _.filter(data, function(prediction){
                         return prediction.lineName == routeNumber;
@@ -137,7 +132,7 @@ function getStopsForRoute(self, lat, long, routeNumber, routeDirection)
 
                     if(predictionsForLine == undefined)
                     {
-                        speechOutput = "Could not find any arrivals for " + stopName;
+                        speechOutput = "Could not find any arrival information for ${stopName}";
                         console.log(speechOutput);
                         self.emit(':tell', speechOutput); 
                         return;
@@ -153,19 +148,13 @@ function getStopsForRoute(self, lat, long, routeNumber, routeDirection)
                     self.emit(':tell', speechOutput); 
                 });
             }).on('error', function(e) {
-                console.log("Got error fetching arrivals: " + e.message);
-                speechOutput = 'error getting data' + e;
-                //this.attributes.error = e;
-                console.log(speechOutput);
-                self.emit(':tell', speechOutput); 
+                console.log("Error getting arrivals information from TFL API: ${e.message}");
+                self.emit(":tell", Messages.TFL_FAILURE);
             });
         });
     }).on('error', function(e) {
-        console.log("Got error: " + e.message);
-        speechOutput = 'error getting data' + e;
-        //this.attributes.error = e;
-        console.log(speechOutput);
-        self.emit(':tell', speechOutput); 
+        console.log("Error getting stops information from TFL API: ${e.message}");
+        self.emit(":tell", Messages.TFL_FAILURE);
     });
 
 }
@@ -219,8 +208,15 @@ const handlers = {
 
         if(this.event.context == undefined)
         {
-            console.log("No DeviceId and ConsentToken provided in request. Aborting");
+            console.log("No Context Object set on the provided request. Aborting");
             this.emit(':tell', Messages.ERROR);
+            return;
+        }
+
+        if(this.event.context.System.user.permissions == undefined)
+        {
+            console.log("No Permissions object set on the provided request. Aborting");
+            this.emit(':tell', Messages.MISSING_PERMISSIONS_REQUEST);
             return;
         }
         
@@ -240,7 +236,7 @@ const handlers = {
         }
         else
         {
-            console.log("User has give permission to access Device Loacation. Requesting...");
+            console.log("User has given permission to access Device Location. Requesting...");
         }
 
         const alexaDeviceAddressClient = new AlexaDeviceAddressClient(apiEndpoint, deviceId, consentToken);
@@ -249,9 +245,20 @@ const handlers = {
         deviceAddressRequest.then((addressResponse) => {
             switch(addressResponse.statusCode) {
                 case 200:
-                    console.log("Address successfully retrieved, now responding to user.");
                     const address = addressResponse.address;
-
+                    var addressLine1 = address['addressLine1']
+                    var postalCode = address['postalCode']
+                    var searchAddress = addressLine1 + ' ' + postalCode;
+                    console.log("Successfully retrieved Address from Alexa API: ${address}");
+                    
+                    if( (addressLine1 == undefined || addressLine1.trim() == '') && (postalCode == undefined || postalCode.trim() == ''))
+                    {
+                        console.log("Device Address does not have the required information. Search Address was ${searchAddress}...Aborting");
+                        self.emit(":tell", Messages.EMPTY_ADDRESS);
+                        return;
+                    }
+                    
+                    
                     var options = {
                       provider: 'google',
                       httpAdapter: 'https', // Default 
@@ -260,44 +267,39 @@ const handlers = {
                     };
                      
                     var geocoder = NodeGeocoder(options);
-                    var searchAddress = address['addressLine1'] + ' ' + address['postalCode'];
                     
                     // Using callback 
                     geocoder.geocode(searchAddress, function(err, res) {
-                        console.log(res);
-                        
                         if(res != undefined && res[0] != undefined && res[0].latitude != undefined && res[0].longitude != undefined){
-                            console.log("Successfully found geocode information for device location");
+                            console.log("Successfully found geocode information: lat=${res[0].latitude},long=${res[0].longitude}");
                             getStopsForRoute(self, res[0].latitude, res[0].longitude, routeNumber, routeDirection);
                         }
                         else
                         {
-                            console.log("Error getting geocode information for address: " + err);
-                            this.emit(":tell", Messages.NO_GEOCODE_ADDRESS);
+                            console.log("Error getting geocode information for address: ${err}");
+                            self.emit(":tell", Messages.NO_GEOCODE_ADDRESS);
                         }
                     });
                         
                     break;
                 case 204:
                     // This likely means that the user didn't have their address set via the companion app.
-                    console.log("Successfully requested from the device address API, but no address was returned.");
+                    console.log("Successfully requested from the device address API, but no address was returned. Status Code: ${response.statusCode}");
                     this.emit(":tell", Messages.NO_ADDRESS);
                     break;
                 case 403:
-                    console.log("The consent token we had wasn't authorized to access the user's address.");
+                    console.log("The consent token we had wasn't authorized to access the user's address. Status Code: ${response.statusCode}");
                     this.emit(":tellWithPermissionCard", Messages.NOTIFY_MISSING_PERMISSIONS, PERMISSIONS);
                     break;
                 default:
-                    this.emit(":ask", Messages.LOCATION_FAILURE, Messages.LOCATION_FAILURE);
+                    console.log("The consent token we had wasn't authorized to access the user's address. Status Code: ${response.statusCode}");
+                    this.emit(":tell", Messages.LOCATION_FAILURE);
             }
-
-            console.info("Ending getAddressHandler()");
         });
 
         deviceAddressRequest.catch((error) => {
             this.emit(":tell", Messages.ERROR);
             console.error(error);
-            console.info("Ending getAddressHandler()");
         });
 
         

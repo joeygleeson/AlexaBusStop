@@ -58,8 +58,7 @@ class AlexaDeviceAddressClient {
      */
     __handleDeviceAddressApiRequest(requestOptions, fulfill, reject) {
         Https.get(requestOptions, (response) => {
-            console.log(`Device Address API responded with a status code of : ${response.statusCode}`);
-
+            
             response.on('data', (data) => {
                 let responsePayloadObject = JSON.parse(data);
 
