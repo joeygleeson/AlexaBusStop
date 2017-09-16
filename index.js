@@ -38,6 +38,8 @@ const languageStrings = {
     }
 };
 
+const TFL_APP_ID = 'f29d3624'
+const TFL_APP_KEY = 'd4ed8ef5bb35dc961a8137e322a700bb' 
 const GEOCODE_APP_KEY = 'AIzaSyD9eJKVNGjc1Rm4e4fZ7JAs_rWMXSE7TLA';
 
 function getStopsForRoute(self, lat, long, routeNumber, routeDirection)
@@ -47,7 +49,7 @@ function getStopsForRoute(self, lat, long, routeNumber, routeDirection)
     
     var options = {
         host: 'api.tfl.gov.uk',
-        path: '/Stoppoint?lat=' + lat + '&lon=' + long + '&stoptypes=NaptanPublicBusCoachTram&radius=800',
+        path: '/Stoppoint?lat=${lat}&lon=${long}&stoptypes=NaptanPublicBusCoachTram&radius=800&app_id=${TFL_APP_ID}&app_key=${TFL_APP_KEY}',
         headers: {'User-Agent': 'request'}
     };
 
@@ -112,7 +114,7 @@ function getStopsForRoute(self, lat, long, routeNumber, routeDirection)
             
             var options = {
                 host: 'api.tfl.gov.uk',
-                path: '/Stoppoint/' + closestStop.id + '/Arrivals?mode=bus',
+                path: '/Stoppoint/${closestStop.id}/Arrivals?mode=bus&app_id=${TFL_APP_ID}&app_key=${TFL_APP_KEY}',
                 headers: {'User-Agent': 'request'}
             };
             https.get(options, function(res) {
