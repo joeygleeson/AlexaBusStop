@@ -250,8 +250,8 @@ const handlers = {
                     const address = addressResponse.address;
                     var addressLine1 = address['addressLine1']
                     var postalCode = address['postalCode']
-                    var searchAddress = addressLine1 + ' ' + postalCode;
-                    console.log("Successfully retrieved Address from Alexa API: " + searchAddress);
+
+                    console.log(`Successfully retrieved Address from Alexa API: ${addressLine1} and ${postalCode}`);
                     
                     if( (addressLine1 == undefined || addressLine1.trim() == '') && (postalCode == undefined || postalCode.trim() == ''))
                     {
@@ -260,6 +260,18 @@ const handlers = {
                         return;
                     }
                     
+
+                    var searchAddress = '';
+                    if(addressLine1 != undefined && addressLine1.trim() != '' && addressLine1 != 'null')
+                    {
+                        searchAddress += addressLine1 + ' '
+                    }
+                    if(postalCode != undefined && postalCode.trim() != '' && postalCode != 'null')
+                    {
+                        searchAddress += postalCode 
+                    }
+
+                    searchAddress = searchAddress.trim()
                     
                     var options = {
                       provider: 'google',
